@@ -5,7 +5,7 @@
 #include <QtNetwork>
 #include <set>
 #include "ui_Serveur.h"
-#include "Clt.h"
+#include "Client.h"
 
 
 class Serveur : public QWidget, private Ui::Serveur
@@ -16,9 +16,9 @@ class Serveur : public QWidget, private Ui::Serveur
     public:
         Serveur();
         QString hostPort; // Identité du serveur
-        QList<Clt *> clients; // Liste des clients "alive"
+        QList<Client *> clients; // Liste des processus clients
 
-        Clt *clientIsIn(Clt *client, QList<Clt *> &clients);
+        Client *clientIsIn(Client *client, QList<Client *> &clients); // Vérifie la présence d'un client dans la liste
         //void envoyerATous(const QString &message);
         //void envoyerATous(const QString hostPort, const QTime time, const QString &message);
         //void envoyerAuxAutres(const QString &message);
@@ -27,9 +27,9 @@ class Serveur : public QWidget, private Ui::Serveur
         // void nouvelleConnexion();
         //void donneesRecues();
         //void deconnexionClient();
-        void clientAlive();
-        void whoIsAlive();
-        void deadCollector();
+        void clientAlive(); // Slot executé lors de la reception d'un iamAlive
+        void whoIsAlive(); // Slot executé lors d'un clic sur le bouton whoIsAlive
+        void deadCollector(); // Slot executé périodiquement pour modifier le statut des processus client n'emettant plus
 
     private:
         //QLabel *etatServeur;
@@ -40,13 +40,13 @@ class Serveur : public QWidget, private Ui::Serveur
         quint16 appPort = 50885; // Port de l'appli
 
 
-        QTimer *tDeadCollector;
+        QTimer *tDeadCollector; // timer pour le slot deadCollector
 
-        QUdpSocket *udpBroadSocket; // Socket d'ecoute des alive
+        QUdpSocket *udpBroadSocket; // Socket d'ecoute des broadcasts iamAlive
         QTcpServer *serveur; // Socket d'ecoute
         quint16 tailleMessage;
 
-        void connectTo(Clt c);
+        void connectTo(Client c);
 };
 
 #endif

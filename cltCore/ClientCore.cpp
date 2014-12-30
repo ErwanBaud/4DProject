@@ -3,9 +3,9 @@
 
 using namespace std;
 
-Client::Client()
+ClientCore::ClientCore()
 {
-    // Gestion du client
+    // Demarrage du client
     client = new QTcpServer(this);
     if (!client->listen(QHostAddress("127.0.0.1"), 0)) // Démarrage du client sur 127.0.0.1 et sur un port aleatoire
     {
@@ -14,6 +14,7 @@ Client::Client()
     }
     else
     {
+        // Renseignement des attributs
         host = client->serverAddress();
         port = client->serverPort();
         hostPort = host.toString() + ":" + QString::number(port);
@@ -21,12 +22,12 @@ Client::Client()
         tailleMessage = 0;
         ready = false;
 
+        //connect(client, SIGNAL(newConnection()), this, SLOT(nouvelleConnexion()));
+
+        // Initialisation des composants utiles au broadcast iamAlive
+        udpBroadSocket = new QUdpSocket(this);
         tAlive = new QTimer();
         tAlive->setInterval(2000);
-
-        udpBroadSocket = new QUdpSocket(this);
-
-        //connect(client, SIGNAL(newConnection()), this, SLOT(nouvelleConnexion()));
         connect(tAlive, SIGNAL(timeout()), this, SLOT(iamAlive()));
         tAlive->start();
     }
@@ -34,8 +35,11 @@ Client::Client()
 
 
 
-// Envoi du message iamAlive
-void Client::iamAlive()
+/* Envoi du message iamAlive
+ * du type host#port
+ * exemple : "127.0.0.1#12345"
+ * */
+void ClientCore::iamAlive()
 {
     cout << "I am alive on " + hostPort.toStdString() << endl;
     QByteArray datagram;
@@ -48,7 +52,7 @@ void Client::iamAlive()
 
 /*
 // Tentative de connexion au serveur
-void Client::initConnexion()//QString serveurIP, int serveurPort)
+void ClientCore::initConnexion()//QString serveurIP, int serveurPort)
 {
     // On annonce sur la fenêtre qu'on est en train de se connecter
     cout << "Tentative de connexion en cours..." << endl;
@@ -61,7 +65,7 @@ void Client::initConnexion()//QString serveurIP, int serveurPort)
 
 
 // Envoi d'un message au serveur
-void Client::envoyer(QString mess)
+void ClientCore::envoyer(QString mess)
 {
     QByteArray paquet;
     QDataStream out(&paquet, QIODevice::WriteOnly);
@@ -76,7 +80,7 @@ void Client::envoyer(QString mess)
 }
 
 // On a reçu un paquet (ou un sous-paquet)
-void Client::donneesRecues()
+void ClientCore::donneesRecues()
 {
     // Même principe que lorsque le serveur reçoit un paquet :
     // On essaie de récupérer la taille du message
@@ -115,7 +119,7 @@ void Client::donneesRecues()
 }
 
 // Ce slot est appelé lorsque la connexion au serveur a réussi
-void Client::connecte()
+void ClientCore::connecte()
 {
     host = socket->localAddress();
     port = socket->localPort();
@@ -126,13 +130,13 @@ void Client::connecte()
 }
 
 // Ce slot est appelé lorsqu'on est déconnecté du serveur
-void Client::deconnecte()
+void ClientCore::deconnecte()
 {
     cout << "Deconnecte du serveur." << endl;
 }
 
 // Ce slot est appelé lorsqu'il y a une erreur
-void Client::erreurSocket(QAbstractSocket::SocketError erreur)
+void ClientCore::erreurSocket(QAbstractSocket::SocketError erreur)
 {
     switch(erreur) // On affiche un message différent selon l'erreur qu'on nous indique
     {

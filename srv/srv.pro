@@ -12,11 +12,11 @@ TEMPLATE = app
 
 SOURCES += main.cpp \
     Serveur.cpp \
-    Clt.cpp
+    Client.cpp
 
 HEADERS  += \
     Serveur.h \
-    Clt.h
+    Client.h
 
 FORMS    += \
     Serveur.ui

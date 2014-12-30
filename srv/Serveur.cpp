@@ -17,7 +17,7 @@ Serveur::Serveur()
 
     //setWindowTitle(tr("ZeroChat - Serveur"));
 
-    // Gestion du serveur
+    // Démarrage du serveur
     serveur = new QTcpServer(this);
     if (!serveur->listen(QHostAddress("127.0.0.1"), appPort)) // Démarrage du serveur sur 127.0.0.1 et sur le portApp
     {
@@ -31,19 +31,23 @@ Serveur::Serveur()
         port = serveur->serverPort();
         hostPort = host.toString() + ":" + QString::number(port);
 
+        // Mise à jour des labels de l'interface
         serveurIP->setText(host.toString());
         serveurPort->setText(QString::number(port));
 
 
-        udpBroadSocket = new QUdpSocket(this);
-        udpBroadSocket->bind(appPort, QUdpSocket::ShareAddress);
 
         listeMessages->append(tr("Le serveur a ete demarre sur le port <strong>") + QString::number(port));
 
         //connect(serveur, SIGNAL(newConnection()), this, SLOT(nouvelleConnexion()));
+
+
+        // Initialisation des composants pour la gestion des iamALive reçus
+        udpBroadSocket = new QUdpSocket(this);
+        udpBroadSocket->bind(appPort, QUdpSocket::ShareAddress);
         connect(udpBroadSocket, SIGNAL(readyRead()), this, SLOT(clientAlive()));
 
-
+        // Initialisation des composants du deadCollector
         tDeadCollector = new QTimer();
         tDeadCollector->setInterval(3000);
         connect(tDeadCollector, SIGNAL(timeout()), this, SLOT(deadCollector()));
@@ -53,10 +57,13 @@ Serveur::Serveur()
     tailleMessage = 0;
 }
 
-// Executé a chaque reception d'un broadcast
-// Ajout des nouveaux clients au set
+/* Executé a chaque reception d'un iamAlive
+ * Ajout des nouveaux clients à la liste
+ * Rafraichissement des timeout
+ * */
 void Serveur::clientAlive()
 {
+    // Tant qu'il y a des paquets reçus
      while (udpBroadSocket->hasPendingDatagrams())
      {
          QByteArray datagram;
@@ -64,76 +71,76 @@ void Serveur::clientAlive()
          datagram.resize(udpBroadSocket->pendingDatagramSize());
          udpBroadSocket->readDatagram(datagram.data(), datagram.size());
          mess = datagram.split('#');
-         Clt *clt = new Clt(mess[0], mess[1]);
-         Clt *pClt = clientIsIn(clt, clients);
+         Client *client = new Client(mess[0], mess[1]); // Création d'un objet client
+         Client *pClient = clientIsIn(client, clients); // Vérification de la présence dans la liste
 
-         if ( pClt == NULL )
+         // S'il n'y est pas
+         if ( pClient == NULL )
          {
-             clt->status = 1;
-             clt->timeOut = QTime::currentTime();
-             clients.append(clt);
-             //connectTo(clt);
+             client->status = 1; // Statut = alive
+             client->timeOut = QTime::currentTime();
+             clients.append(client);
+             //connectTo(client);
          }
+         // S'il y est
          else
-         {
              // Refresh timeout du client trouvé
-             (*pClt).timeOut = QTime::currentTime();
-             listeMessages->append("Present : " + (*pClt).hostPort
-                                                + "  status: " + QString::number((*pClt).status)
-                                                + "  timeOut: " + (*pClt).timeOut.toString() + "s.");
-         }
+             (*pClient).timeOut = QTime::currentTime();
      }
 }
 
-// Retourne un pointeur vers le client s'il est dans la liste
-// Retourne un pointeur NULL sinon
-Clt * Serveur::clientIsIn(Clt *client, QList<Clt *> &clients)
+/* Retourne un pointeur vers le client s'il est dans la liste
+ * Retourne un pointeur NULL sinon
+ * */
+Client * Serveur::clientIsIn(Client *client, QList<Client *> &clients)
 {
-    QList<Clt *>::Iterator cIt = clients.end();
-    for( cIt = clients.begin(); cIt != clients.end(); ++cIt )
-        if( *client == *cIt )
-            return *cIt;
+    QList<Client *>::Iterator clientIterator = clients.end();
+    for( clientIterator = clients.begin(); clientIterator != clients.end(); ++clientIterator )
+        if( *client == *clientIterator )
+            return *clientIterator;
 
     return NULL;
 }
 
-// Affiche les clients contenu dans le set
+/* Affiche les clients contenu dans la liste du serveur
+ *  */
 void Serveur::whoIsAlive()
 {
     listeMessages->append("");
     listeMessages->append("Are alive on this server :");
 
-    for(QList<Clt *>::Iterator cIt = clients.begin(); cIt != clients.end(); ++cIt )
+    for(QList<Client *>::Iterator clientIterator = clients.begin(); clientIterator != clients.end(); ++clientIterator )
     {
 
-        if( (*cIt)->status != 0 )
-            listeMessages->append("\t" + (*cIt)->hostPort
-                              + "  status: " + QString::number((*cIt)->status)
-                              + "  timeOut: " + (*cIt)->timeOut.toString() + "s.");
+        if( (*clientIterator)->status != 0 )
+            listeMessages->append("\t" + (*clientIterator)->hostPort
+                              + "  status: " + QString::number((*clientIterator)->status)
+                              + "  timeOut: " + (*clientIterator)->timeOut.toString() + "s.");
     }
     listeMessages->append("");
 
     listeMessages->append("Are dead on this server :");
-    for(QList<Clt *>::Iterator cIt = clients.begin(); cIt != clients.end(); ++cIt )
+    for(QList<Client *>::Iterator clientIterator = clients.begin(); clientIterator != clients.end(); ++clientIterator )
     {
 
-        if( (*cIt)->status == 0 )
-            listeMessages->append("\t" + (*cIt)->hostPort
-                              + "  status: " + QString::number((*cIt)->status)
-                              + "  timeOut: " + (*cIt)->timeOut.toString() + "s.");
+        if( (*clientIterator)->status == 0 )
+            listeMessages->append("\t" + (*clientIterator)->hostPort
+                              + "  status: " + QString::number((*clientIterator)->status)
+                              + "  timeOut: " + (*clientIterator)->timeOut.toString() + "s.");
     }
     listeMessages->append("");
 }
 
-// Actualisation des statuts des clients dans le set
+/* Actualisation des statuts des clients
+ * */
 void Serveur::deadCollector()
 {
-    for(QList<Clt *>::Iterator cIt = clients.begin(); cIt != clients.end(); ++cIt )
-        if( (*cIt)->status != 0 )
-            if( (*cIt)->timeOut < QTime::currentTime().addSecs(-3))
+    for(QList<Client *>::Iterator clientIterator = clients.begin(); clientIterator != clients.end(); ++clientIterator )
+        if( (*clientIterator)->status != 0 )
+            if( (*clientIterator)->timeOut < QTime::currentTime().addSecs(-3))
             {
-                (*cIt)->status = 0;
-                listeMessages->append("\t" + (*cIt)->hostPort + " is dead !: ");
+                (*clientIterator)->status = 0;
+                listeMessages->append("\t" + (*clientIterator)->hostPort + " is dead !: ");
             }
 }
 
