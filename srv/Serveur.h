@@ -30,10 +30,9 @@ class Serveur : public QWidget, private Ui::Serveur
         void clientAlive(); // Slot executé lors de la reception d'un iamAlive
         void whoIsAlive(); // Slot executé lors d'un clic sur le bouton whoIsAlive
         void deadCollector(); // Slot executé périodiquement pour modifier le statut des processus client n'emettant plus
+        void startClient(); // Slot executé lors d'un clic sur le bouton lancer
 
     private:
-        //QLabel *etatServeur;
-        //QPushButton *boutonQuitter;
 
         QHostAddress host; // Adresse IP du serveur
         quint16 port; // Port du serveur

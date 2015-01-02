@@ -4,11 +4,10 @@ Serveur::Serveur()
 {
     setupUi(this);
 
-    // Création et disposition des widgets de la fenêtre
-    //etatServeur = new QLabel;
-    //boutonQuitter = new QPushButton(tr("Quitter"));
     connect(boutonQuitter, SIGNAL(clicked()), qApp, SLOT(quit()));
     connect(boutonWho, SIGNAL(clicked()), this, SLOT(whoIsAlive()));
+    connect(boutonStart, SIGNAL(clicked()), this, SLOT(startClient()));
+
 
     //QVBoxLayout *layout = new QVBoxLayout;
     //layout->addWidget(etatServeur);
@@ -140,9 +139,20 @@ void Serveur::deadCollector()
             if( (*clientIterator)->timeOut < QTime::currentTime().addSecs(-3))
             {
                 (*clientIterator)->status = 0;
-                listeMessages->append("\t" + (*clientIterator)->hostPort + " is dead !: ");
+                listeMessages->append("\t" + (*clientIterator)->hostPort + " is dead !");
             }
 }
+
+/* Lance un client sur 127.0.0.1 et un port aléatoire
+ *  */
+void Serveur::startClient()
+{
+    system("start C:\\Users\\Erwan\\ISIMA\\3A\\Projet\\Qt\\deploy\\cltCore.exe");
+    listeMessages->append("");
+    listeMessages->append("Client démarré !");
+    listeMessages->append("");
+}
+
 
 
 /*
