@@ -16,6 +16,7 @@ class Client
                         // 1 -> alive
                         // 2 -> connected
 
+
         QTime timeOut;  // timeout pour gèrer les deconnexions
 
         QHostAddress getHost();
@@ -23,7 +24,7 @@ class Client
         void setHost(QString h);
         void setPort(QString p);
 
-        QTcpSocket *socket; // Socket de communication vers le processus client
+        QTcpSocket *toClient; // Socket de communication vers le processus client
 
     private:
         QHostAddress host; // Adresse IP du client

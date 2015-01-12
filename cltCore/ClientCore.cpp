@@ -3,67 +3,220 @@
 
 using namespace std;
 
+/* Constructeur
+ * */
 ClientCore::ClientCore()
 {
+    appPort = 50885;
+
     // Demarrage du client
-    client = new QTcpServer(this);
-    if (!client->listen(QHostAddress("127.0.0.1"), 0)) // Démarrage du client sur 127.0.0.1 et sur un port aleatoire
-    {
-        // Si le client n'a pas été démarré correctement
-        cout << "Le client n'a pas pu etre demarre. Raison : " + client->errorString().toStdString() << endl;
-    }
+    fromServer = new QTcpServer(this); // Socket d'écoute hyperviseur
+    fromClient = new QTcpServer(this); // Socket d'écoute clients
+
+    if (!fromServer->listen(QHostAddress("127.0.0.1"), 0)) // Démarrage de l'ecoute hyperviseur sur un port aleatoire
+        // Si l'ecoute hyperviseur n'a pas été démarré correctement
+        QTextStream(stdout) << "L'ecoute hyperviseur n'a pas pu etre demarre. Raison : " + fromServer->errorString() << endl;
+
     else
-    {
-        // Renseignement des attributs
-        host = client->serverAddress();
-        port = client->serverPort();
-        hostPort = host.toString() + ":" + QString::number(port);
+        if (!fromClient->listen(QHostAddress("127.0.0.1"), 0)) // Démarrage de l'ecoute client sur un port aleatoire
+            // Si l'ecoute client n'a pas été démarré correctement
+            QTextStream(stdout) << "L'ecoute client n'a pas pu etre demarre. Raison : " + fromClient->errorString() << endl;
+        else
 
-        tailleMessage = 0;
-        ready = false;
+            // Initialisation des composants iamAlive
+            udpBroadSocket = new QUdpSocket(this);
+            if (udpBroadSocket->state() != udpBroadSocket->BoundState)
+            {
+                udpBroadSocket->bind(appPort, QUdpSocket::ReuseAddressHint);
+            }
+            else
+                QTextStream(stdout) << "Probleme" << endl;
 
-        //connect(client, SIGNAL(newConnection()), this, SLOT(nouvelleConnexion()));
+            connect(udpBroadSocket, SIGNAL(readyRead()), this, SLOT(clientAlive()), Qt::QueuedConnection);
 
-        // Initialisation des composants utiles au broadcast iamAlive
-        udpBroadSocket = new QUdpSocket(this);
-        tAlive = new QTimer();
-        tAlive->setInterval(2000);
-        connect(tAlive, SIGNAL(timeout()), this, SLOT(iamAlive()));
-        tAlive->start();
-    }
+            // Le client est démarré et toutes ses sockets sont opérationnelles
+
+            // Renseignement des attributs
+            tailleMessage = 0;
+            ready = false;
+            host = fromServer->serverAddress();
+            portS = fromServer->serverPort();
+            portC = fromClient->serverPort();
+
+            QTextStream(stdout) << "I am alive on " + host.toString()<< " portS:" << portS << " portC:" << portC << endl;
+
+            // Initialisation des composants utiles au broadcast iamAlive
+            udpBroadSocket = new QUdpSocket(this);
+            tAlive = new QTimer();
+            tAlive->setInterval(2000);
+            connect(tAlive, SIGNAL(timeout()), this, SLOT(iamAlive()));
+            tAlive->start();
+
+            connect(fromServer, SIGNAL(newConnection()), this, SLOT(connexionHyperviseur()));
+            connect(fromClient, SIGNAL(newConnection()), this, SLOT(connexionClient()));
 }
 
 
-
 /* Envoi du message iamAlive
- * du type host#port
- * exemple : "127.0.0.1#12345"
+ * du type host#portS#portC
+ * exemple : "127.0.0.1#12345#67890"
  * */
 void ClientCore::iamAlive()
 {
-    cout << "I am alive on " + hostPort.toStdString() << endl;
     QByteArray datagram;
     datagram.append(host.toString());
     datagram.append("#");
-    datagram.append(QByteArray::number(port));
+    datagram.append(QByteArray::number(portS));
+    datagram.append("#");
+    datagram.append(QByteArray::number(portC));
     udpBroadSocket->writeDatagram(datagram.data(), datagram.size(), QHostAddress::Broadcast, appPort);
 }
 
 
-/*
-// Tentative de connexion au serveur
-void ClientCore::initConnexion()//QString serveurIP, int serveurPort)
+/* Executé a chaque reception d'un iamAlive
+ * Ajout des nouveaux clients à la liste
+ * */
+void ClientCore::clientAlive()
 {
-    // On annonce sur la fenêtre qu'on est en train de se connecter
-    cout << "Tentative de connexion en cours..." << endl;
+    // Tant qu'il y a des paquets reçus
+     while (udpBroadSocket->hasPendingDatagrams())
+     {
+         QByteArray datagram;
+         QList<QByteArray> mess;
+         datagram.resize(udpBroadSocket->pendingDatagramSize());
+         udpBroadSocket->readDatagram(datagram.data(), datagram.size());
+         mess = datagram.split('#');
 
-    socket->abort(); // On désactive les connexions précédentes s'il y en a
-    socket->connectToHost(serveurIP, serveurPort); // On se connecte au serveur demandé
-    socket->waitForConnected();
+         QHostAddress host = QHostAddress(QString(mess[0]));
+         quint16 port = mess[2].toUShort();
+
+         if(!socketIsIn(host, port, others))
+         {
+             QTcpSocket *socket = new QTcpSocket(this);
+
+             QTextStream(stdout) << "    Tentative de connexion a " << host.toString() << ":" << port << endl;
+
+             socket->connectToHost(host, port); // On se connecte au serveur demandé
+             socket->waitForConnected();
+             others << socket;
+
+             QTextStream(stdout) << "    Connecte a " << host.toString() << ":" << port << endl;
+
+             //connect(client->toClient, SIGNAL(readyRead()), this, SLOT(donneesRecues()));
+             //connect(client->toClient, SIGNAL(disconnected()), this, SLOT(deconnexionClient()));
+         }
+     }
+}
+
+
+/* Connexion de l'hyperviseur
+ * */
+void ClientCore::connexionHyperviseur()
+{
+    QTcpSocket *hyperviseur = fromServer->nextPendingConnection();
+    toServer = hyperviseur;
+
+    QTextStream(stdout) << "L'hyperviseur vient de se connecter : "
+         << hyperviseur->peerAddress().toString() << ":" << hyperviseur->peerPort() << endl;
+
+    connect(hyperviseur, SIGNAL(disconnected()), this, SLOT(deconnexionHyperviseur()));
+}
+
+
+/* Deconnexion d'un processus client
+ * */
+void ClientCore::deconnexionHyperviseur()
+{
+    QTextStream(stdout) << "L'hyperviseur vient de se deconnecter." << endl;
+    toServer->deleteLater();
+}
+
+
+/* Connexion des clients
+ * */
+void ClientCore::connexionClient()
+{
+    QTcpSocket *nouveauClient = fromClient->nextPendingConnection();
+    others << nouveauClient;
+
+    QTextStream(stdout) << "Un nouveau client vient de se connecter : "
+         << nouveauClient->peerAddress().toString() << ":" << nouveauClient->peerPort() << endl;
+
+    connect(nouveauClient, SIGNAL(disconnected()), this, SLOT(deconnexionClient()));
+}
+
+
+/* Deconnexion d'un processus client
+ * */
+void ClientCore::deconnexionClient()
+{
+    // On détermine quel client se déconnecte
+    QTcpSocket *socket = qobject_cast<QTcpSocket *>(sender());
+    if (socket == 0) // Si par hasard on n'a pas trouvé le client à l'origine du signal, on arrête la méthode
+        return;
+
+    QTextStream(stdout) << "Un client vient de se deconnecter" << endl;
+    others.removeOne(socket);
+    socket->deleteLater();
 }
 
 
 
+/* Renvoie true si la socket correspondante est deja dans la liste others
+ * */
+bool ClientCore::socketIsIn(QHostAddress host, quint16 port, QList<QTcpSocket *> &others)
+{
+    for( QList<QTcpSocket *>::Iterator socketIterator = others.begin(); socketIterator != others.end(); ++socketIterator )
+        if( ((*socketIterator)->peerAddress() == host) && ((*socketIterator)->peerPort() == port) )
+            return true;
+
+    return false;
+}
+
+
+/*
+void Serveur::donneesRecues()
+{
+    // 1 : on reçoit un paquet (ou un sous-paquet) d'un des clients
+
+    // On détermine quel client envoie le message (recherche du QTcpSocket du client)
+    QTcpSocket *socket = qobject_cast<QTcpSocket *>(sender());
+    if (socket == 0) // Si par hasard on n'a pas trouvé le client à l'origine du signal, on arrête la méthode
+        return;
+
+    // Si tout va bien, on continue : on récupère le message
+    QDataStream in(socket);
+
+    if (tailleMessage == 0) // Si on ne connaît pas encore la taille du message, on essaie de la récupérer
+    {
+        if (socket->bytesAvailable() < (int)sizeof(quint16)) // On n'a pas reçu la taille du message en entier
+             return;
+
+        in >> tailleMessage; // Si on a reçu la taille du message en entier, on la récupère
+    }
+
+    // Si on connaît la taille du message, on vérifie si on a reçu le message en entier
+    if (socket->bytesAvailable() < tailleMessage) // Si on n'a pas encore tout reçu, on arrête la méthode
+        return;
+
+
+    // Si on arrive jusqu'à cette ligne, on peut récupérer le message entier
+    QString sender, messageRecu;
+    QTime time;
+    in >> sender;
+    in >> time;
+    in >> messageRecu;
+
+
+    // 2 : on renvoie le message à tous les clients
+    cout << time.toString() << " - Recu de " << sender << " : " << messageRecu << endl;
+
+    // 3 : remise de la taille du message à 0 pour permettre la réception des futurs messages
+    tailleMessage = 0;
+}
+
+
+/*
 // Envoi d'un message au serveur
 void ClientCore::envoyer(QString mess)
 {
@@ -118,39 +271,6 @@ void ClientCore::donneesRecues()
     tailleMessage = 0;
 }
 
-// Ce slot est appelé lorsque la connexion au serveur a réussi
-void ClientCore::connecte()
-{
-    host = socket->localAddress();
-    port = socket->localPort();
-    hostPort = host.toString() + ":" + QString::number(port);
-    cout << hostPort.toStdString() << endl;
-    cout << "Connexion reussie !" << endl;
-    ready = true;
-}
 
-// Ce slot est appelé lorsqu'on est déconnecté du serveur
-void ClientCore::deconnecte()
-{
-    cout << "Deconnecte du serveur." << endl;
-}
-
-// Ce slot est appelé lorsqu'il y a une erreur
-void ClientCore::erreurSocket(QAbstractSocket::SocketError erreur)
-{
-    switch(erreur) // On affiche un message différent selon l'erreur qu'on nous indique
-    {
-        case QAbstractSocket::HostNotFoundError:
-            cout << "ERREUR : le serveur n'a pas pu etre trouve. Verifiez l'IP et le port." << endl;
-            break;
-        case QAbstractSocket::ConnectionRefusedError:
-            cout << "ERREUR : le serveur a refuse la connexion. Verifiez si le programme \"serveur\" a bien ete lance. Verifiez aussi l'IP et le port." << endl;
-            break;
-        case QAbstractSocket::RemoteHostClosedError:
-            cout << "ERREUR : le serveur a coupe la connexion." << endl;
-            break;
-        default:
-            cout << "ERREUR : " << socket->errorString().toStdString() << endl;
-    }
-}
 */
+

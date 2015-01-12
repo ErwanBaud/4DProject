@@ -7,6 +7,8 @@ Client::Client(QString h, QString p)
     setHost(h);
     setPort(p);
     hostPort = host.toString() + ":" + QString::number(port);
+
+    toClient = new QTcpSocket();
 }
 
 QHostAddress Client::getHost()
@@ -28,8 +30,6 @@ void Client::setPort(QString p)
 {
     if (!p.isEmpty()) port = p.toUShort();
 }
-
-
 
 
 bool operator==(const Client client1, const Client client2)

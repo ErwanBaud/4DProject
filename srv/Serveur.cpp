@@ -1,5 +1,8 @@
 #include "Serveur.h"
 
+
+/* Constructeur
+ * */
 Serveur::Serveur()
 {
     setupUi(this);
@@ -17,44 +20,41 @@ Serveur::Serveur()
     //setWindowTitle(tr("ZeroChat - Serveur"));
 
     // Démarrage du serveur
-    serveur = new QTcpServer(this);
-    if (!serveur->listen(QHostAddress("127.0.0.1"), appPort)) // Démarrage du serveur sur 127.0.0.1 et sur le portApp
+    appPort = 50885;
+
+    // Initialisation des composants pour la gestion des iamALive reçus
+    udpBroadSocket = new QUdpSocket(this);
+    if (udpBroadSocket->state() != udpBroadSocket->BoundState)
     {
-        // Si le serveur n'a pas été démarré correctement
-        listeMessages->append(tr("Le serveur n'a pas pu etre demarre. Raison :<br />") + serveur->errorString());
+        udpBroadSocket->bind(appPort, QUdpSocket::ReuseAddressHint);
     }
     else
-    {
-        // Si le serveur a été démarré correctement
-        host = serveur->serverAddress();
-        port = serveur->serverPort();
-        hostPort = host.toString() + ":" + QString::number(port);
+        listeMessages->append(tr("Probleme"));
 
-        // Mise à jour des labels de l'interface
-        serveurIP->setText(host.toString());
-        serveurPort->setText(QString::number(port));
+    //udpBroadSocket->bind(QHostAddress("127.0.0.1"), appPort);
+    connect(udpBroadSocket, SIGNAL(readyRead()), this, SLOT(clientAlive()), Qt::QueuedConnection);
 
+    // Si le serveur a été démarré correctement
+    host = QHostAddress("127.0.0.1");
+    port = udpBroadSocket->localPort();
+    hostPort = host.toString() + ":" + QString::number(port);
 
+    // Mise à jour des labels de l'interface
+    serveurIP->setText(host.toString());
+    serveurPort->setText(QString::number(appPort));
 
-        listeMessages->append(tr("Le serveur a ete demarre sur le port <strong>") + QString::number(port));
+    listeMessages->append(tr("Le serveur a ete demarre sur le port <strong>") + QString::number(port));
 
-        //connect(serveur, SIGNAL(newConnection()), this, SLOT(nouvelleConnexion()));
-
-
-        // Initialisation des composants pour la gestion des iamALive reçus
-        udpBroadSocket = new QUdpSocket(this);
-        udpBroadSocket->bind(appPort, QUdpSocket::ShareAddress);
-        connect(udpBroadSocket, SIGNAL(readyRead()), this, SLOT(clientAlive()));
-
-        // Initialisation des composants du deadCollector
-        tDeadCollector = new QTimer();
-        tDeadCollector->setInterval(3000);
-        connect(tDeadCollector, SIGNAL(timeout()), this, SLOT(deadCollector()));
-        tDeadCollector->start();
-    }
+    // Initialisation des composants du deadCollector
+    tDeadCollector = new QTimer();
+    tDeadCollector->setInterval(3000);
+    connect(tDeadCollector, SIGNAL(timeout()), this, SLOT(deadCollector()));
+    tDeadCollector->start();
 
     tailleMessage = 0;
 }
+
+
 
 /* Executé a chaque reception d'un iamAlive
  * Ajout des nouveaux clients à la liste
@@ -78,8 +78,8 @@ void Serveur::clientAlive()
          {
              client->status = 1; // Statut = alive
              client->timeOut = QTime::currentTime();
+             connectTo(client);
              clients.append(client);
-             //connectTo(client);
          }
          // S'il y est
          else
@@ -87,6 +87,8 @@ void Serveur::clientAlive()
              (*pClient).timeOut = QTime::currentTime();
      }
 }
+
+
 
 /* Retourne un pointeur vers le client s'il est dans la liste
  * Retourne un pointeur NULL sinon
@@ -100,6 +102,8 @@ Client * Serveur::clientIsIn(Client *client, QList<Client *> &clients)
 
     return NULL;
 }
+
+
 
 /* Affiche les clients contenu dans la liste du serveur
  *  */
@@ -130,6 +134,7 @@ void Serveur::whoIsAlive()
     listeMessages->append("");
 }
 
+
 /* Actualisation des statuts des clients
  * */
 void Serveur::deadCollector()
@@ -143,11 +148,16 @@ void Serveur::deadCollector()
             }
 }
 
+
+
 /* Lance un client sur 127.0.0.1 et un port aléatoire
  *  */
 void Serveur::startClient()
 {
-    system("start C:\\Users\\Erwan\\ISIMA\\3A\\Projet\\Qt\\deploy\\cltCore.exe");
+    QString program = "C:\\Users\\Erwan\\ISIMA\\3A\\Projet\\Qt\\deploy\\cltCore.exe";
+    QProcess *myProcess = new QProcess(this);
+    myProcess->startDetached(program);
+
     listeMessages->append("");
     listeMessages->append("Client démarré !");
     listeMessages->append("");
@@ -155,30 +165,44 @@ void Serveur::startClient()
 
 
 
-/*
-void Serveur::connectTo(Clt c)
+/* Ouverture d'une socket hyperviseur-client
+ * */
+void Serveur::connectTo(Client *client)
 {
-    listeMessages->append("    Tentative de connexion a " + c.hostPort);
+    listeMessages->append("    Tentative de connexion a " + client->hostPort);
 
-        //c.socket->connectToHost(c.getHost(), c.getPort()); // On se connecte au serveur demandé
-        //c.socket->waitForConnected();
-        //listeMessages->append("    Connecte a " + hostPort);
-
+        client->toClient->connectToHost(client->getHost(), client->getPort()); // On se connecte au serveur demandé
+        client->toClient->waitForConnected();
+        client->status = 2;
+        listeMessages->append("    Connecte a " + client->hostPort);
+        //connect(client->toClient, SIGNAL(readyRead()), this, SLOT(donneesRecues()));
+        connect(client->toClient, SIGNAL(disconnected()), this, SLOT(deconnexionClient()));
 }
 
-/*
-void Serveur::nouvelleConnexion()
+
+
+/* Deconnexion de la socket d'un client
+ * */
+void Serveur::deconnexionClient()
 {
-    //envoyerATous(tr("Un nouveau client vient de se connecter"));
+    // On détermine quel client se déconnecte
+    QTcpSocket *socket = qobject_cast<QTcpSocket *>(sender());
+    if (socket == 0) // Si par hasard on n'a pas trouvé le client à l'origine du signal, on arrête la méthode
+        return;
 
-    QTcpSocket *nouveauClient = serveur->nextPendingConnection();
-    clients << nouveauClient;
 
-    listeMessages->append("Un nouveau client vient de se connecter");
-
-    connect(nouveauClient, SIGNAL(readyRead()), this, SLOT(donneesRecues()));
-    connect(nouveauClient, SIGNAL(disconnected()), this, SLOT(deconnexionClient()));
+    foreach(Client *c, clients)
+        if( c->toClient == socket )
+        {
+            c->toClient->close();
+            c->toClient->deleteLater();
+            listeMessages->append("    /!\\" + c->hostPort + " vient de se deconnecter.");
+            break;
+        }
 }
+
+
+/*
 
 void Serveur::donneesRecues()
 {
@@ -221,21 +245,6 @@ void Serveur::donneesRecues()
     tailleMessage = 0;
 }
 
-
-void Serveur::deconnexionClient()
-{
-    //envoyerATous(tr("Un client vient de se deconnecter."));
-
-    // On détermine quel client se déconnecte
-    QTcpSocket *socket = qobject_cast<QTcpSocket *>(sender());
-    if (socket == 0) // Si par hasard on n'a pas trouvé le client à l'origine du signal, on arrête la méthode
-        return;
-
-    listeMessages->append("Un client vient de se deconnecter");
-    clients.removeOne(socket);
-
-    socket->deleteLater();
-}
 
 void Serveur::envoyerATous(const QString hostPort, const QTime time, const QString &message)
 {
