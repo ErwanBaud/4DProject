@@ -24,15 +24,13 @@ Serveur::Serveur()
 
     // Initialisation des composants pour la gestion des iamALive reçus
     udpBroadSocket = new QUdpSocket(this);
-    if (udpBroadSocket->state() != udpBroadSocket->BoundState)
-    {
-        udpBroadSocket->bind(appPort, QUdpSocket::ReuseAddressHint);
-    }
+    if ( (udpBroadSocket->bind(appPort, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) )
+        listeMessages->append(tr("     Socket UDP ready."));
     else
-        listeMessages->append(tr("Probleme"));
+        listeMessages->append(tr("     Erreur socket UDP."));
 
     //udpBroadSocket->bind(QHostAddress("127.0.0.1"), appPort);
-    connect(udpBroadSocket, SIGNAL(readyRead()), this, SLOT(clientAlive()), Qt::QueuedConnection);
+    connect(udpBroadSocket, SIGNAL(readyRead()), this, SLOT(clientAlive()));
 
     // Si le serveur a été démarré correctement
     host = QHostAddress("127.0.0.1");

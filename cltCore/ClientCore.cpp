@@ -1,6 +1,8 @@
 #include <iostream>
 #include "ClientCore.h"
 
+#define tAliveTimer 2000
+
 using namespace std;
 
 /* Constructeur
@@ -25,35 +27,32 @@ ClientCore::ClientCore()
 
             // Initialisation des composants iamAlive
             udpBroadSocket = new QUdpSocket(this);
-            if (udpBroadSocket->state() != udpBroadSocket->BoundState)
-            {
-                udpBroadSocket->bind(appPort, QUdpSocket::ReuseAddressHint);
-            }
+            if ( !(udpBroadSocket->bind(appPort, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) )
+                QTextStream(stdout) << "    Erreur socket UDP." << endl;
             else
-                QTextStream(stdout) << "Probleme" << endl;
+                QTextStream(stdout) << "    Socket UDP ready." << endl;
 
-            connect(udpBroadSocket, SIGNAL(readyRead()), this, SLOT(clientAlive()), Qt::QueuedConnection);
+                connect(udpBroadSocket, SIGNAL(readyRead()), this, SLOT(clientAlive()));
 
-            // Le client est démarré et toutes ses sockets sont opérationnelles
+                // Le client est démarré et toutes ses sockets sont opérationnelles
 
-            // Renseignement des attributs
-            tailleMessage = 0;
-            ready = false;
-            host = fromServer->serverAddress();
-            portS = fromServer->serverPort();
-            portC = fromClient->serverPort();
+                // Renseignement des attributs
+                tailleMessage = 0;
+                ready = false;
+                host = fromServer->serverAddress();
+                portS = fromServer->serverPort();
+                portC = fromClient->serverPort();
 
-            QTextStream(stdout) << "I am alive on " + host.toString()<< " portS:" << portS << " portC:" << portC << endl;
+                QTextStream(stdout) << "I am alive on " + host.toString()<< " portS:" << portS << " portC:" << portC << endl;
 
-            // Initialisation des composants utiles au broadcast iamAlive
-            udpBroadSocket = new QUdpSocket(this);
-            tAlive = new QTimer();
-            tAlive->setInterval(2000);
-            connect(tAlive, SIGNAL(timeout()), this, SLOT(iamAlive()));
-            tAlive->start();
+                // Initialisation des composants utiles au broadcast iamAlive
+                tAlive = new QTimer();
+                tAlive->setInterval(tAliveTimer);
+                connect(tAlive, SIGNAL(timeout()), this, SLOT(iamAlive()));
+                tAlive->start();
 
-            connect(fromServer, SIGNAL(newConnection()), this, SLOT(connexionHyperviseur()));
-            connect(fromClient, SIGNAL(newConnection()), this, SLOT(connexionClient()));
+                connect(fromServer, SIGNAL(newConnection()), this, SLOT(connexionHyperviseur()));
+                connect(fromClient, SIGNAL(newConnection()), this, SLOT(connexionClient()));
 }
 
 
@@ -90,7 +89,7 @@ void ClientCore::clientAlive()
          QHostAddress host = QHostAddress(QString(mess[0]));
          quint16 port = mess[2].toUShort();
 
-         if(!socketIsIn(host, port, others))
+         if( port != portC && !socketIsIn(host, port, others))
          {
              QTcpSocket *socket = new QTcpSocket(this);
 
